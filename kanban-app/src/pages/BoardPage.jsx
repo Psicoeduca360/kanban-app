@@ -22,11 +22,11 @@ import TaskModal from '../components/TaskModal.jsx'
 import ImportPanel from '../components/ImportPanel.jsx'
 import Toast from '../components/Toast.jsx'
 
-export default function BoardPage({ config, onLogout }) {
+export default function BoardPage() {
   const {
     tasks, loading, error,
-    fetchTasks, addTask, editTask, moveTask, removeTask, importTasks,
-  } = useBoard(config)
+    fetchTasks, addTask, editTask, moveTask, removeTask, importTasks, resetToDefaults
+  } = useBoard()
 
   // ─── UI State ─────────────────────────────────────────────────────────────
 
@@ -60,22 +60,28 @@ export default function BoardPage({ config, onLogout }) {
     setActiveTask(task || null)
   }
 
-  const handleDragEnd = async ({ active, over }) => {
+  const handleDragEnd = ({ active, over }) => {
     setActiveTask(null)
     if (!over) return
 
-    // The droppable ID is the column name (e.g. "En progreso")
-    const newStatus = over.id
-    if (!COLUMNS.includes(newStatus)) return
+    let newStatus = null
+
+    if (COLUMNS.includes(over.id)) {
+      newStatus = over.id
+    } else {
+      const overTask = tasks.find(t => t.id === over.id)
+      if (overTask) {
+        newStatus = overTask.status
+      }
+    }
+
+    if (!newStatus || !COLUMNS.includes(newStatus)) return
 
     const task = tasks.find(t => t.id === active.id)
     if (!task || task.status === newStatus) return
 
-    try {
-      await moveTask(task.id, newStatus)
-    } catch (e) {
-      showToast(`Error al mover tarea: ${e.message}`, 'error')
-    }
+    moveTask(task.id, newStatus)
+    showToast(`Tarea movida a "${newStatus}"`)
   }
 
   // ─── Modal Handlers ───────────────────────────────────────────────────────
@@ -95,13 +101,13 @@ export default function BoardPage({ config, onLogout }) {
     setEditingTask(null)
   }
 
-  const handleSaveTask = async (taskData) => {
+  const handleSaveTask = (taskData) => {
     try {
       if (isNewTask) {
-        await addTask(taskData)
+        addTask(taskData)
         showToast('Tarea creada exitosamente')
       } else {
-        await editTask(taskData)
+        editTask(taskData)
         showToast('Tarea actualizada')
       }
       closeModal()
@@ -110,9 +116,9 @@ export default function BoardPage({ config, onLogout }) {
     }
   }
 
-  const handleDeleteTask = async (taskId) => {
+  const handleDeleteTask = (taskId) => {
     try {
-      await removeTask(taskId)
+      removeTask(taskId)
       showToast('Tarea eliminada')
       closeModal()
     } catch (e) {
@@ -122,15 +128,19 @@ export default function BoardPage({ config, onLogout }) {
 
   // ─── Import Handler ───────────────────────────────────────────────────────
 
-  const handleImport = async (taskList) => {
-    const { imported, errors } = await importTasks(taskList)
+  const handleImport = (taskList) => {
+    const { imported } = importTasks(taskList)
     if (imported.length > 0) {
       showToast(`${imported.length} tarea(s) importada(s) correctamente`)
     }
-    if (errors.length > 0) {
-      showToast(`${errors.length} tarea(s) no pudieron importarse`, 'error')
+    return { imported, errors: [] }
+  }
+
+  const handleResetData = () => {
+    if (window.confirm('¿Estás seguro de restablecer las tareas a su estado inicial?')) {
+      resetToDefaults()
+      showToast('Datos restablecidos')
     }
-    return { imported, errors }
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -140,12 +150,11 @@ export default function BoardPage({ config, onLogout }) {
   return (
     <div className="min-h-screen flex flex-col bg-surface-50">
       <Header
-        config={config}
         taskCount={tasks.length}
         onRefresh={fetchTasks}
-        onNewTask={() => openNewTask()}
+        onNewTask={() => openNewTask(defaultStatus)}
         onImport={() => setShowImport(true)}
-        onLogout={onLogout}
+        onReset={handleResetData}
         loading={loading}
       />
 

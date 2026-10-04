@@ -1,134 +1,111 @@
 /**
- * useBoard — central state manager for the Kanban board.
+ * useBoard — central state manager for the Kanban board with local persistence.
  *
  * Responsibilities:
- * - Fetch issues from GitHub on mount
- * - Provide CRUD operations (create, update, delete)
- * - Handle optimistic UI updates (instant local change → confirm with API)
+ * - Load tasks from localStorage on mount
+ * - Provide CRUD operations (create, update, delete, move, import)
+ * - Persist changes synchronously to localStorage
  */
 import { useState, useCallback } from 'react'
 import {
-  getIssues,
-  createIssue,
-  updateIssue,
-  deleteIssue,
-} from '../services/githubApi.js'
+  getStoredTasks,
+  saveStoredTasks,
+  getDefaultTasks,
+  clearStoredTasks,
+} from '../utils/storage.js'
 
-export function useBoard(config) {
+export function useBoard() {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   // ─── Fetch ───────────────────────────────────────────────────────────────────
 
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(() => {
     setLoading(true)
     setError(null)
     try {
-      const fetched = await getIssues(config)
-      setTasks(fetched)
+      const stored = getStoredTasks()
+      setTasks(stored)
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
-  }, [config])
+  }, [])
 
   // ─── Create ──────────────────────────────────────────────────────────────────
 
-  const addTask = useCallback(async (taskData) => {
-    // Optimistic: add a temporary placeholder immediately
-    const tempId = `temp-${Date.now()}`
-    const optimistic = { ...taskData, id: tempId, githubNumber: null, createdAt: new Date().toISOString() }
-    setTasks(prev => [optimistic, ...prev])
-
-    try {
-      const created = await createIssue({ ...config, task: taskData })
-      // Replace placeholder with real issue
-      setTasks(prev => prev.map(t => t.id === tempId ? created : t))
-      return created
-    } catch (e) {
-      // Rollback on failure
-      setTasks(prev => prev.filter(t => t.id !== tempId))
-      throw e
+  const addTask = useCallback((taskData) => {
+    const newTask = {
+      ...taskData,
+      id: `task-${Date.now()}`,
+      createdAt: new Date().toISOString(),
     }
-  }, [config])
+    setTasks(prev => {
+      const updated = [newTask, ...prev]
+      saveStoredTasks(updated)
+      return updated
+    })
+    return newTask
+  }, [])
 
   // ─── Update ──────────────────────────────────────────────────────────────────
 
-  const editTask = useCallback(async (taskData) => {
-    // Optimistic: immediately apply the change in UI
-    setTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData } : t))
-
-    try {
-      const updated = await updateIssue({ ...config, task: taskData })
-      setTasks(prev => prev.map(t => t.id === taskData.id ? updated : t))
+  const editTask = useCallback((taskData) => {
+    setTasks(prev => {
+      const updated = prev.map(t => (t.id === taskData.id ? { ...t, ...taskData } : t))
+      saveStoredTasks(updated)
       return updated
-    } catch (e) {
-      // Rollback by re-fetching
-      await fetchTasks()
-      throw e
-    }
-  }, [config, fetchTasks])
+    })
+  }, [])
 
   // ─── Move (drag & drop status change) ────────────────────────────────────────
 
-  const moveTask = useCallback(async (taskId, newStatus) => {
-    const task = tasks.find(t => t.id === taskId)
-    if (!task || task.status === newStatus) return
-
-    // Optimistic update
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
-
-    try {
-      await updateIssue({ ...config, task: { ...task, status: newStatus } })
-    } catch (e) {
-      // Rollback
-      setTasks(prev => prev.map(t => t.id === taskId ? task : t))
-      throw e
-    }
-  }, [config, tasks])
+  const moveTask = useCallback((taskId, newStatus) => {
+    setTasks(prev => {
+      const updated = prev.map(t => (t.id === taskId ? { ...t, status: newStatus } : t))
+      saveStoredTasks(updated)
+      return updated
+    })
+  }, [])
 
   // ─── Delete ──────────────────────────────────────────────────────────────────
 
-  const removeTask = useCallback(async (taskId) => {
-    const task = tasks.find(t => t.id === taskId)
-    if (!task) return
+  const removeTask = useCallback((taskId) => {
+    setTasks(prev => {
+      const updated = prev.filter(t => t.id !== taskId)
+      saveStoredTasks(updated)
+      return updated
+    })
+  }, [])
 
-    // Optimistic: remove immediately
-    setTasks(prev => prev.filter(t => t.id !== taskId))
+  // ─── Bulk Import (from DOCX or files) ────────────────────────────────────────
 
-    try {
-      await deleteIssue({ ...config, githubNumber: task.githubNumber })
-    } catch (e) {
-      // Rollback
-      setTasks(prev => [...prev, task])
-      throw e
-    }
-  }, [config, tasks])
+  const importTasks = useCallback((taskList) => {
+    const imported = taskList.map((taskData, idx) => ({
+      ...taskData,
+      id: `imported-${Date.now()}-${idx}`,
+      createdAt: new Date().toISOString(),
+    }))
 
-  // ─── Bulk Import (from DOCX) ─────────────────────────────────────────────────
+    setTasks(prev => {
+      const updated = [...imported, ...prev]
+      saveStoredTasks(updated)
+      return updated
+    })
 
-  const importTasks = useCallback(async (taskList) => {
-    const results = []
-    const errors = []
+    return { imported, errors: [] }
+  }, [])
 
-    for (const taskData of taskList) {
-      try {
-        const created = await createIssue({ ...config, task: taskData })
-        results.push(created)
-      } catch (e) {
-        errors.push({ task: taskData, error: e.message })
-      }
-    }
+  // ─── Reset ───────────────────────────────────────────────────────────────────
 
-    // Add all successfully created tasks to state
-    if (results.length > 0) {
-      setTasks(prev => [...results, ...prev])
-    }
-
-    return { imported: results, errors }
-  }, [config])
+  const resetToDefaults = useCallback(() => {
+    clearStoredTasks()
+    const defaults = getDefaultTasks()
+    saveStoredTasks(defaults)
+    setTasks(defaults)
+  }, [])
 
   return {
     tasks,
@@ -140,5 +117,6 @@ export function useBoard(config) {
     moveTask,
     removeTask,
     importTasks,
+    resetToDefaults,
   }
 }

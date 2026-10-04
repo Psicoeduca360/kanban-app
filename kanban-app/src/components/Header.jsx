@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
 import {
-  LayoutDashboard, RefreshCw, Plus, Upload, LogOut,
-  Github, ChevronDown, Loader2
+  LayoutDashboard, RefreshCw, Plus, Upload, RotateCcw,
+  ChevronDown, Loader2
 } from 'lucide-react'
 
 export default function Header({
-  config, taskCount, onRefresh, onNewTask, onImport, onLogout, loading
+  taskCount, onRefresh, onNewTask, onImport, onReset, loading
 }) {
   const [showMenu, setShowMenu] = useState(false)
 
@@ -19,18 +19,6 @@ export default function Header({
           </div>
           <span className="font-semibold text-gray-900 text-base hidden sm:block">KanbanFlow</span>
         </div>
-
-        {/* Repo badge */}
-        <a
-          href={`https://github.com/${config.owner}/${config.repo}`}
-          target="_blank"
-          rel="noreferrer"
-          className="hidden md:flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800
-            bg-surface-100 hover:bg-surface-200 px-2.5 py-1.5 rounded-lg transition font-mono"
-        >
-          <Github className="w-3.5 h-3.5" />
-          {config.owner}/{config.repo}
-        </a>
 
         {/* Task count */}
         <span className="text-xs text-gray-400 hidden sm:block">
@@ -70,7 +58,7 @@ export default function Header({
           <span className="hidden sm:inline">Nueva tarea</span>
         </button>
 
-        {/* Account menu */}
+        {/* Options Menu */}
         <div className="relative">
           <button
             onClick={() => setShowMenu(v => !v)}
@@ -84,19 +72,15 @@ export default function Header({
                 className="fixed inset-0 z-10"
                 onClick={() => setShowMenu(false)}
               />
-              <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-surface-200
+              <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-surface-200
                 rounded-xl shadow-modal z-20 py-1 overflow-hidden">
-                <div className="px-3 py-2 border-b border-surface-100">
-                  <p className="text-xs text-gray-400">Conectado como</p>
-                  <p className="text-sm font-medium text-gray-800 truncate font-mono">{config.owner}</p>
-                </div>
                 <button
-                  onClick={() => { setShowMenu(false); onLogout() }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600
-                    hover:bg-red-50 transition text-left"
+                  onClick={() => { setShowMenu(false); onReset && onReset() }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-600
+                    hover:bg-amber-50 transition text-left"
                 >
-                  <LogOut className="w-4 h-4" />
-                  Desconectar
+                  <RotateCcw className="w-4 h-4" />
+                  Restablecer datos iniciales
                 </button>
               </div>
             </>
