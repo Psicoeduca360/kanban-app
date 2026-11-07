@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KanbanFlow — Tablero de Tareas con Adjuntos</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              200: '#c7d2fe',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            surface: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+            }
+          },
+          boxShadow: {
+            card: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
+            'card-hover': '0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
+            modal: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+  <!-- SortableJS (Drag & Drop) -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+  <!-- Mammoth.js (.docx parser) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    .sortable-ghost {
+      opacity: 0.35;
+      transform: scale(0.98);
+    }
+    .sortable-chosen {
+      box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.2);
+    }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased select-none">
+
+  <!-- ─── HEADER ─── -->
+  <header class="sticky top-0 z-30 bg-white border-b border-surface-200 shadow-sm">
+    <div class="flex items-center gap-3 px-4 md:px-6 h-14">
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-2 mr-auto">
+        <div class="w-8 h-8 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-sm">
+          <i class="ph ph-kanban text-lg"></i>
+        </div>
+        <div>
+          <span class="font-bold text-gray-900 text-base tracking-tight">KanbanFlow</span>
+          <span class="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 hidden sm:inline-block">
+            Modo Libre
+          </span>
+        </div>
+      </div>
+
+      <!-- Task counter -->
+      <span id="task-counter" class="text-xs text-gray-500 font-medium hidden sm:block">
+        Cargando...
+      </span>
+
+      <!-- Action: Refresh -->
+      <button id="btn-refresh" title="Actualizar tablero" class="p-2 rounded-lg text-gray-500 hover:bg-surface-100 hover:text-gray-900 transition">
+        <i class="ph ph-arrow-clockwise text-lg"></i>
+      </button>
+
+      <!-- Action: Import Word -->
+      <button id="btn-open-import" title="Importar desde Word (.docx)" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-surface-100 border border-surface-200 transition">
+        <i class="ph ph-upload-simple text-base"></i>
+        <span class="hidden sm:inline">Importar</span>
+      </button>
+
+      <!-- Action: New Task -->
+      <button id="btn-new-task" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 transition shadow-sm">
+        <i class="ph ph-plus-bold text-base"></i>
+        <span class="hidden sm:inline">Nueva tarea</span>
+      </button>
+
+      <!-- Options dropdown -->
+      <div class="relative">
+        <button id="btn-menu-toggle" class="p-2 rounded-lg text-gray-500 hover:bg-surface-100 transition" title="Más opciones">
+          <i class="ph ph-dots-three-vertical text-lg"></i>
+        </button>
+        <div id="dropdown-menu" class="hidden absolute right-0 top-full mt-1 w-52 bg-white border border-surface-200 rounded-xl shadow-modal z-40 py-1 overflow-hidden">
+          <button id="btn-reset-data" class="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-600 hover:bg-amber-50 transition text-left">
+            <i class="ph ph-arrow-counter-clockwise text-base"></i>
+            Restablecer datos iniciales
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── KANBAN BOARD ─── -->
+  <main class="flex-1 p-4 md:p-6 overflow-x-auto">
+    <div class="flex gap-4 md:gap-6 min-h-[calc(100vh-10rem)] items-start">
+      
+      <!-- Column 1: Pendiente -->
+      <div class="flex flex-col w-72 md:w-80 shrink-0">
+        <div class="flex items-center gap-2 px-3.5 py-2.5 rounded-xl mb-3 border bg-slate-50 border-slate-200">
+          <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+          <span class="text-sm font-semibold text-slate-700">Pendiente</span>
+          <span id="count-Pendiente" class="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">0</span>
+        </div>
+        <div id="col-Pendiente" data-column="Pendiente" class="kanban-dropzone flex-1 flex flex-col gap-2.5 p-2 rounded-xl min-h-[300px] bg-surface-100 transition-colors"></div>
+        <button onclick="app.openNewTask('Pendiente')" class="flex items-center gap-1.5 w-full px-3 py-2 mt-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-surface-200 transition">
+          <i class="ph ph-plus text-sm"></i> Añadir tarea
+        </button>
+      </div>
+
+      <!-- Column 2: En progreso -->
+      <div class="flex flex-col w-72 md:w-80 shrink-0">
+        <div class="flex items-center gap-2 px-3.5 py-2.5 rounded-xl mb-3 border bg-blue-50 border-blue-200">
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+          <span class="text-sm font-semibold text-blue-700">En progreso</span>
+          <span id="count-En progreso" class="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-blue-200 text-blue-700">0</span>
+        </div>
+        <div id="col-En progreso" data-column="En progreso" class="kanban-dropzone flex-1 flex flex-col gap-2.5 p-2 rounded-xl min-h-[300px] bg-surface-100 transition-colors"></div>
+        <button onclick="app.openNewTask('En progreso')" class="flex items-center gap-1.5 w-full px-3 py-2 mt-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-surface-200 transition">
+          <i class="ph ph-plus text-sm"></i> Añadir tarea
+        </button>
+      </div>
+
+      <!-- Column 3: Completado -->
+      <div class="flex flex-col w-72 md:w-80 shrink-0">
+        <div class="flex items-center gap-2 px-3.5 py-2.5 rounded-xl mb-3 border bg-emerald-50 border-emerald-200">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span class="text-sm font-semibold text-emerald-700">Completado</span>
+          <span id="count-Completado" class="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-700">0</span>
+        </div>
+        <div id="col-Completado" data-column="Completado" class="kanban-dropzone flex-1 flex flex-col gap-2.5 p-2 rounded-xl min-h-[300px] bg-surface-100 transition-colors"></div>
+        <button onclick="app.openNewTask('Completado')" class="flex items-center gap-1.5 w-full px-3 py-2 mt-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-surface-200 transition">
+          <i class="ph ph-plus text-sm"></i> Añadir tarea
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ─── TASK MODAL (CREATE / EDIT) ─── -->
+  <div id="task-modal" class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" onclick="app.closeTaskModal()"></div>
+    <div class="fixed inset-x-0 bottom-0 md:inset-0 flex md:items-center md:justify-center p-0 md:p-4">
+      <div class="w-full md:max-w-xl bg-white rounded-t-2xl md:rounded-2xl shadow-modal overflow-hidden flex flex-col max-h-[92vh] md:max-h-[85vh] relative z-10">
+        
+        <!-- Modal Header -->
+        <div class="flex items-center gap-3 px-5 py-4 border-b border-surface-100">
+          <h2 id="modal-title" class="font-semibold text-gray-900 flex-1">Nueva tarea</h2>
+          <button id="modal-delete-btn" type="button" class="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition hidden" title="Eliminar tarea">
+            <i class="ph ph-trash text-lg"></i>
+          </button>
+          <button onclick="app.closeTaskModal()" class="p-1.5 rounded-lg hover:bg-surface-100 text-gray-500 transition">
+            <i class="ph ph-x text-lg"></i>
+          </button>
+        </div>
+
+        <!-- Form Body -->
+        <form id="task-form" class="flex-1 overflow-y-auto p-5 space-y-4">
+          <input type="hidden" id="task-id" />
+          
+          <!-- Title -->
+          <div>
+            <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Título *</label>
+            <input type="text" id="task-title-input" required placeholder="¿En qué hay que trabajar?" class="w-full px-3 py-2.5 rounded-lg border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition" />
+          </div>
+
+          <!-- Description -->
+          <div>
+            <label class="flex items-center gap-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+              <i class="ph ph-text-align-left text-sm"></i> Descripción
+            </label>
+            <textarea id="task-desc-input" rows="3" placeholder="Contexto, notas, requerimientos..." class="w-full px-3 py-2.5 rounded-lg border border-surface-300 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"></textarea>
+          </div>
+
+          <!-- Priority + Status -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="flex items-center gap-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                <i class="ph ph-flag text-sm"></i> Prioridad
+              </label>
+              <div class="flex gap-1.5" id="priority-selector">
+                <button type="button" data-priority="alta" class="priority-btn flex-1 py-2 rounded-lg text-xs font-medium border border-surface-200 text-gray-500 hover:border-surface-300 transition">Alta</button>
+                <button type="button" data-priority="media" class="priority-btn flex-1 py-2 rounded-lg text-xs font-medium border border-surface-200 text-gray-500 hover:border-surface-300 transition">Media</button>
+                <button type="button" data-priority="baja" class="priority-btn flex-1 py-2 rounded-lg text-xs font-medium border border-surface-200 text-gray-500 hover:border-surface-300 transition">Baja</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Estado</label>
+              <select id="task-status-select" class="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white transition">
+                <option value="Pendiente">Pendiente</option>
+                <option value="En progreso">En progreso</option>
+                <option value="Completado">Completado</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Category + Due Date -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="flex items-center gap-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                <i class="ph ph-tag text-sm"></i> Categoría
+              </label>
+              <input type="text" id="task-cat-input" placeholder="ej. Diseño, Backend..." class="w-full px-3 py-2.5 rounded-lg border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition" />
+            </div>
+
+            <div>
+              <label class="flex items-center gap-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                <i class="ph ph-calendar-blank text-sm"></i> Fecha límite
+              </label>
+              <input type="date" id="task-date-input" class="w-full px-3 py-2 rounded-lg border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition" />
+            </div>
+          </div>
+
+          <!-- ─── ATTACHMENTS (DOCUMENTS & PHOTOS) ─── -->
+          <div class="pt-3 border-t border-surface-100">
+            <div class="flex items-center justify-between mb-2">
+              <label class="flex items-center gap-1.5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                <i class="ph ph-paperclip text-sm"></i> Adjuntos (<span id="attachments-count">0</span>)
+              </label>
+              <button type="button" onclick="document.getElementById('file-upload-input').click()" class="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 font-medium">
+                <i class="ph ph-plus"></i> Adjuntar archivo o foto
+              </button>
+            </div>
+
+            <!-- Drag & Drop Zone -->
+            <div id="dropzone" class="border-2 border-dashed border-surface-200 hover:border-brand-300 hover:bg-surface-50 rounded-xl p-4 text-center cursor-pointer transition" onclick="document.getElementById('file-upload-input').click()">
+              <div class="flex flex-col items-center justify-center py-1 pointer-events-none">
+                <i class="ph ph-upload-simple text-2xl text-gray-400 mb-1"></i>
+                <p class="text-xs text-gray-600 font-medium">Arrastra fotografías o documentos aquí o haz clic para subir</p>
+                <p class="text-[11px] text-gray-400 mt-0.5">Soporta PNG, JPG, WEBP, PDF, Word, Excel, texto (persistente en IndexedDB)</p>
+              </div>
+              <input type="file" id="file-upload-input" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" class="hidden" />
+            </div>
+
+            <!-- Photos Gallery Preview -->
+            <div id="photos-section" class="mt-3 hidden">
+              <h4 class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <i class="ph ph-image text-sm"></i> Fotografías
+              </h4>
+              <div id="photos-grid" class="grid grid-cols-3 gap-2.5"></div>
+            </div>
+
+            <!-- Documents List Preview -->
+            <div id="docs-section" class="mt-3 hidden">
+              <h4 class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <i class="ph ph-file-text text-sm"></i> Documentos
+              </h4>
+              <div id="docs-list" class="space-y-1.5"></div>
+            </div>
+          </div>
+
+          <div id="modal-error" class="text-xs text-red-600 bg-red-50 border border-red-200 p-2.5 rounded-lg hidden"></div>
+        </form>
+
+        <!-- Modal Footer -->
+        <div class="flex items-center gap-2 px-5 py-4 border-t border-surface-100 bg-surface-50">
+          <button type="button" onclick="app.closeTaskModal()" class="flex-1 py-2.5 rounded-lg border border-surface-200 text-sm font-medium text-gray-600 hover:bg-surface-100 transition">Cancelar</button>
+          <button type="button" id="modal-save-btn" onclick="app.saveTaskFromModal()" class="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition shadow-sm">Guardar tarea</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── LIGHTBOX MODAL (PHOTO & DOC FULLSCREEN PREVIEW) ─── -->
+  <div id="lightbox-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-3 md:p-6 bg-black/85 backdrop-blur-sm">
+    <div class="absolute inset-0" onclick="app.closeLightbox()"></div>
+    <div class="relative z-10 w-full max-w-4xl max-h-[92vh] bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800 bg-gray-900 text-white">
+        <div class="flex items-center gap-3 min-w-0 pr-4">
+          <i id="lightbox-icon" class="ph ph-image text-xl text-brand-400"></i>
+          <div class="min-w-0">
+            <h3 id="lightbox-title" class="text-sm font-medium truncate text-gray-100">Vista previa</h3>
+            <p id="lightbox-size" class="text-xs text-gray-400">0 KB</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <a id="lightbox-download-btn" href="#" download class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white transition">
+            <i class="ph ph-download-simple"></i> Descargar
+          </a>
+          <button onclick="app.closeLightbox()" class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition">
+            <i class="ph ph-x text-lg"></i>
+          </button>
+        </div>
+      </div>
+      <!-- Body -->
+      <div id="lightbox-body" class="flex-1 overflow-auto p-4 flex items-center justify-center bg-gray-950/70 min-h-[300px]"></div>
+    </div>
+  </div>
+
+  <!-- ─── IMPORT PANEL (WORD .DOCX) ─── -->
+  <div id="import-panel" class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black/30 backdrop-blur-sm" onclick="app.closeImportPanel()"></div>
+    <div class="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-modal z-50 flex flex-col">
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-surface-100">
+        <div class="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center text-brand-600">
+          <i class="ph ph-upload-simple text-lg"></i>
+        </div>
+        <div class="flex-1">
+          <h2 class="font-semibold text-gray-900 text-sm">Importar desde Word</h2>
+          <p class="text-xs text-gray-400">Sube un archivo .docx con formato estructurado</p>
+        </div>
+        <button onclick="app.closeImportPanel()" class="p-1.5 rounded-lg hover:bg-surface-100 text-gray-400 transition">
+          <i class="ph ph-x text-lg"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-5" id="import-content">
+        <!-- Dropzone -->
+        <div id="docx-dropzone" class="border-2 border-dashed border-surface-300 hover:border-brand-400 hover:bg-brand-50/50 rounded-2xl p-8 text-center cursor-pointer transition" onclick="document.getElementById('docx-file-input').click()">
+          <div class="flex flex-col items-center gap-2 pointer-events-none">
+            <div class="w-12 h-12 rounded-xl bg-surface-100 flex items-center justify-center text-gray-500">
+              <i class="ph ph-file-doc text-2xl"></i>
+            </div>
+            <p class="text-sm font-medium text-gray-700">Arrastra tu archivo .docx aquí</p>
+            <p class="text-xs text-gray-400">o haz clic para examinar</p>
+          </div>
+          <input type="file" id="docx-file-input" accept=".docx" class="hidden" />
+        </div>
+
+        <div id="import-preview-area" class="mt-4 hidden space-y-4"></div>
+      </div>
+
+      <div id="import-footer" class="hidden px-5 py-4 border-t border-surface-100 bg-surface-50 flex gap-2">
+        <button onclick="app.resetImport()" class="flex-1 py-2.5 rounded-xl border border-surface-200 text-sm text-gray-600 hover:bg-surface-100 transition">Cambiar archivo</button>
+        <button id="btn-confirm-import" class="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition shadow-sm">Importar al tablero</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── TOAST NOTIFICATION ─── -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm transition-all transform duration-200"></div>
+
+  <!-- ─── JAVASCRIPT APPLICATION CORE ─── -->
+  <script>
+    /**
+     * KanbanFlow Application Logic
+     * Features:
+     * - IndexedDB persistence for large attachments
+     * - Drag & Drop between columns
+     * - Document & photo attachments with lightbox and cover image
+     * - Word (.docx) import
+     */
+    const app = (function () {
+      const DB_NAME = 'KanbanFlowDB';
+      const DB_VERSION = 1;
+      const STORE_NAME = 'tasks_store';
+      const STORAGE_KEY = 'kanbanflow_tasks';
+      const COLUMNS = ['Pendiente', 'En progreso', 'Completado'];
+
+      let state = {
+        tasks: [],
+        currentEditingTask: null,
+        modalPriority: 'media',
+        tempAttachments: [],
+        parsedImportTasks: []
+      };
+
+      // ─── INITIALIZATION ───
+      async function init() {
+        bindGlobalEvents();
+        initSortable();
+        await loadTasks();
+        renderBoard();
+      }
+
+      // ─── INDEXEDDB STORAGE ───
+      function openDB() {
+        return new Promise((resolve, reject) => {
+          if (!window.indexedDB) return reject(new Error('IndexedDB no soportado'));
+          const req = indexedDB.open(DB_NAME, DB_VERSION);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              db.createObjectStore(STORE_NAME);
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async function loadTasks() {
+        try {
+          const db = await openDB();
+          state.tasks = await new Promise((resolve) => {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const req = store.get('all_tasks');
+            req.onsuccess = () => {
+              if (req.result && Array.isArray(req.result) && req.result.length > 0) {
+                resolve(req.result);
+              } else {
+                // Fallback to localStorage or defaults
+                const local = localStorage.getItem(STORAGE_KEY);
+                if (local) {
+                  try {
+                    const parsed = JSON.parse(local);
+                    if (Array.isArray(parsed) && parsed.length > 0) return resolve(parsed);
+                  } catch (_) {}
+                }
+                const defaults = getDefaultTasks();
+                saveTasks(defaults).catch(console.error);
+                resolve(defaults);
+              }
+            };
+            req.onerror = () => resolve(getDefaultTasks());
+          });
+        } catch (e) {
+          console.warn('Usando localStorage fallback:', e);
+          const raw = localStorage.getItem(STORAGE_KEY);
+          state.tasks = raw ? JSON.parse(raw) : getDefaultTasks();
+        }
+      }
+
+      async function saveTasks(tasks) {
+        state.tasks = tasks;
+        try {
+          const db = await openDB();
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            const req = store.put(tasks, 'all_tasks');
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+          });
+        } catch (err) {
+          console.warn('Error guardando en IndexedDB:', err);
+        }
+
+        // Backup in localStorage
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+        } catch (_) {
+          // If quota reached due to base64 images, save lightweight version in localStorage
+          try {
+            const lightweight = tasks.map(t => ({
+              ...t,
+              attachments: (t.attachments || []).map(a => ({
+                id: a.id, name: a.name, type: a.type, size: a.size, uploadedAt: a.uploadedAt, data: ''
+              }))
+            }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweight));
+          } catch (_) {}
+        }
+      }
+
+      function getDefaultTasks() {
+        const samplePhotoSvg = `data:image/svg+xml;utf8,${encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
+            <defs>
+              <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#4f46e5;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#06b6d4;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <rect width="400" height="240" fill="url(#grad)" rx="16"/>
+            <circle cx="200" cy="100" r="40" fill="#ffffff" opacity="0.2"/>
+            <path d="M120 180 L180 120 L230 160 L270 130 L320 180 Z" fill="#ffffff" opacity="0.8"/>
+            <text x="200" y="210" font-family="sans-serif" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle">
+              Diseño de Interfaz Kanban
+            </text>
+          </svg>`
+        )}`;
+
+        return [
+          {
+            id: 'task-1',
+            title: 'Diseñar interfaz con soporte para fotografías y documentos',
+            description: 'Permitir subir archivos adjuntos en cada tarea, visualizando portadas y lightbox.',
+            priority: 'alta',
+            status: 'Pendiente',
+            category: 'Diseño',
+            dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+            createdAt: new Date().toISOString(),
+            attachments: [
+              {
+                id: 'att-1',
+                name: 'mockup_interfaz.svg',
+                type: 'image/svg+xml',
+                size: 1450,
+                data: samplePhotoSvg,
+                uploadedAt: new Date().toISOString()
+              },
+              {
+                id: 'att-2',
+                name: 'especificaciones_proyecto.pdf',
+                type: 'application/pdf',
+                size: 28400,
+                data: 'data:application/pdf;base64,JVBERi0xLjMKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDQgMCBSCi9NZWRpYUJveCBbMCAwIDYxMiA3OTJdCi9Db250ZW50cyA2IDAgUgo+PgplbmRvYmoKNiAwIG9iago8PAovTGVuZ3RoIDQ0Cj4+CnN0cmVhbQpCVAovRjEgMTIgVGYKNzIgNzEyIFRECihtaW5pZmljYWRvKSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCjQgMCBvYmoKPDwKL1R5cGUgL1BhZ2VzCi9LaWRzIFs1IDAgUl0KL0NvdW50IDEKPj4KZW5kb2JqCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDQgMCBSCj4+CmVuZG9iagp4cmVmCjAgNwowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAyNjAgMDAwMDAgbiAKMDAwMDAwMDAwMCAwMDAwMCBuIAowMDAwMDAwMDAwIDAwMDAwIG4gCjAwMDAwMDAyMDEgMDAwMDAgbiAKMDAwMDAwMDAxOSAwMDAwMCBuIAowMDAwMDAwMDg4IDAwMDAwIG4gCnRyYWlsZXIKPDwKL1NpemUgNgovUm9vdCAxIDAgUgo+PgpzdGFydHhyZWYKMzI1CiUlRU9G',
+                uploadedAt: new Date().toISOString()
+              }
+            ]
+          },
+          {
+            id: 'task-2',
+            title: 'Configurar Drag & Drop fluido e IndexedDB',
+            description: 'Mover tarjetas con fluidez y guardar archivos sin limitación de cuotas.',
+            priority: 'media',
+            status: 'En progreso',
+            category: 'Desarrollo',
+            dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0],
+            createdAt: new Date().toISOString(),
+            attachments: []
+          },
+          {
+            id: 'task-3',
+            title: 'Acceso directo sin tokens ni autenticación',
+            description: 'Uso libre del tablero sin configuración previa de repositorios externos.',
+            priority: 'baja',
+            status: 'Completado',
+            category: 'Sistema',
+            dueDate: new Date().toISOString().split('T')[0],
+            createdAt: new Date().toISOString(),
+            attachments: []
+          }
+        ];
+      }
+
+      // ─── SORTABLE DRAG & DROP ───
+      function initSortable() {
+        COLUMNS.forEach(col => {
+          const el = document.getElementById(`col-${col}`);
+          if (!el) return;
+          new Sortable(el, {
+            group: 'kanban_columns',
+            animation: 180,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            onEnd: function (evt) {
+              const taskId = evt.item.dataset.id;
+              const newColumn = evt.to.dataset.column;
+              if (taskId && newColumn) {
+                const task = state.tasks.find(t => t.id === taskId);
+                if (task && task.status !== newColumn) {
+                  task.status = newColumn;
+                  saveTasks([...state.tasks]);
+                  updateCounters();
+                  showToast(`Tarea movida a "${newColumn}"`);
+                }
+              }
+            }
+          });
+        });
+      }
+
+      // ─── RENDERING ───
+      function renderBoard() {
+        COLUMNS.forEach(col => {
+          const container = document.getElementById(`col-${col}`);
+          if (!container) return;
+          const colTasks = state.tasks.filter(t => (t.status || 'Pendiente') === col);
+
+          if (colTasks.length === 0) {
+            container.innerHTML = `
+              <div class="flex flex-col items-center justify-center py-10 text-center pointer-events-none">
+                <div class="w-10 h-10 rounded-full bg-surface-200 flex items-center justify-center text-gray-400 mb-2">
+                  <i class="ph ph-plus text-base"></i>
+                </div>
+                <p class="text-xs text-gray-400">Sin tareas en esta columna</p>
+              </div>`;
+          } else {
+            container.innerHTML = colTasks.map(task => renderTaskCard(task)).join('');
+          }
+        });
+
+        updateCounters();
+      }
+
+      function updateCounters() {
+        COLUMNS.forEach(col => {
+          const count = state.tasks.filter(t => (t.status || 'Pendiente') === col).length;
+          const badge = document.getElementById(`count-${col}`);
+          if (badge) badge.textContent = count;
+        });
+
+        const totalCounter = document.getElementById('task-counter');
+        if (totalCounter) {
+          totalCounter.textContent = `${state.tasks.length} tarea${state.tasks.length !== 1 ? 's' : ''}`;
+        }
+      }
+
+      function renderTaskCard(task) {
+        const priorityColors = {
+          alta: { bar: 'bg-red-500', badge: 'bg-red-50 text-red-700 border-red-200', label: 'Alta' },
+          media: { bar: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-200', label: 'Media' },
+          baja: { bar: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'Baja' },
+        };
+        const pCfg = priorityColors[task.priority] || priorityColors.media;
+
+        const attachments = task.attachments || [];
+        const images = attachments.filter(isImage);
+        const coverImage = images[0];
+
+        const isOverdue = task.dueDate && new Date(task.dueDate + 'T23:59:59') < new Date();
+
+        return `
+          <div data-id="${task.id}" ondblclick="app.openEditTask('${task.id}')"
+            class="task-card group relative bg-white rounded-xl border border-surface-200 hover:border-surface-300 p-3.5 shadow-card hover:shadow-card-hover transition-all cursor-grab active:cursor-grabbing overflow-hidden">
+            
+            <!-- Priority Indicator -->
+            <div class="absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${pCfg.bar}"></div>
+
+            <!-- Cover Image Preview -->
+            ${coverImage ? `
+              <div class="relative -mx-3.5 -mt-3.5 mb-2.5 overflow-hidden bg-surface-100 aspect-[16/9] max-h-36">
+                <img src="${coverImage.data}" alt="${escapeHtml(coverImage.name)}" class="w-full h-full object-cover transition duration-300 group-hover:scale-102" />
+                ${images.length > 1 ? `
+                  <span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/65 text-white flex items-center gap-1 backdrop-blur-xs">
+                    <i class="ph ph-image"></i> +${images.length - 1}
+                  </span>
+                ` : ''}
+              </div>
+            ` : ''}
+
+            <!-- Header -->
+            <div class="flex items-start gap-2 pl-1.5">
+              <h3 class="flex-1 text-sm font-medium text-gray-900 leading-snug line-clamp-2">
+                ${escapeHtml(task.title)}
+              </h3>
+              <!-- Card actions menu -->
+              <div class="opacity-0 group-hover:opacity-100 transition shrink-0 flex items-center gap-0.5">
+                <button onclick="app.openEditTask('${task.id}')" class="p-1 rounded-md text-gray-400 hover:text-brand-600 hover:bg-surface-100 transition" title="Editar">
+                  <i class="ph ph-pencil-simple text-sm"></i>
+                </button>
+                <button onclick="app.deleteTask('${task.id}')" class="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition" title="Eliminar">
+                  <i class="ph ph-trash text-sm"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Description -->
+            ${task.description ? `
+              <p class="text-xs text-gray-400 pl-1.5 mt-1 line-clamp-2 leading-relaxed">
+                ${escapeHtml(task.description)}
+              </p>
+            ` : ''}
+
+            <!-- Footer: Priority + Category + Attachments + Due Date -->
+            <div class="flex flex-wrap items-center gap-1.5 mt-3 pl-1.5">
+              <span class="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${pCfg.badge}">
+                ${pCfg.label}
+              </span>
+
+              ${task.category ? `
+                <span class="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-surface-100 px-2 py-0.5 rounded-full">
+                  <i class="ph ph-tag text-[10px]"></i>
+                  ${escapeHtml(task.category)}
+                </span>
+              ` : ''}
+
+              ${attachments.length > 0 ? `
+                <span class="inline-flex items-center gap-1 text-[11px] text-gray-600 bg-surface-100 px-2 py-0.5 rounded-full font-medium" title="${attachments.length} archivo(s) adjunto(s)">
+                  <i class="ph ph-paperclip text-[11px]"></i>
+                  ${attachments.length}
+                </span>
+              ` : ''}
+
+              ${task.dueDate ? `
+                <span class="inline-flex items-center gap-1 text-[11px] ml-auto px-2 py-0.5 rounded-full ${isOverdue ? 'bg-red-50 text-red-600 font-medium' : 'bg-surface-100 text-gray-500'}">
+                  <i class="ph ph-calendar-blank text-[10px]"></i>
+                  ${task.dueDate}
+                </span>
+              ` : ''}
+            </div>
+
+          </div>
+        `;
+      }
+
+      // ─── TASK MODAL LOGIC ───
+      function openNewTask(status = 'Pendiente') {
+        state.currentEditingTask = null;
+        state.tempAttachments = [];
+        state.modalPriority = 'media';
+
+        document.getElementById('modal-title').textContent = 'Nueva tarea';
+        document.getElementById('task-id').value = '';
+        document.getElementById('task-title-input').value = '';
+        document.getElementById('task-desc-input').value = '';
+        document.getElementById('task-status-select').value = status;
+        document.getElementById('task-cat-input').value = '';
+        document.getElementById('task-date-input').value = '';
+        document.getElementById('modal-error').classList.add('hidden');
+        document.getElementById('modal-delete-btn').classList.add('hidden');
+
+        updatePriorityButtons('media');
+        renderModalAttachments();
+
+        document.getElementById('task-modal').classList.remove('hidden');
+        setTimeout(() => document.getElementById('task-title-input').focus(), 50);
+      }
+
+      function openEditTask(taskId) {
+        const task = state.tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        state.currentEditingTask = task;
+        state.tempAttachments = JSON.parse(JSON.stringify(task.attachments || []));
+        state.modalPriority = task.priority || 'media';
+
+        document.getElementById('modal-title').textContent = 'Editar tarea';
+        document.getElementById('task-id').value = task.id;
+        document.getElementById('task-title-input').value = task.title || '';
+        document.getElementById('task-desc-input').value = task.description || '';
+        document.getElementById('task-status-select').value = task.status || 'Pendiente';
+        document.getElementById('task-cat-input').value = task.category || '';
+        document.getElementById('task-date-input').value = task.dueDate || '';
+        document.getElementById('modal-error').classList.add('hidden');
+
+        const deleteBtn = document.getElementById('modal-delete-btn');
+        deleteBtn.classList.remove('hidden');
+        deleteBtn.onclick = () => {
+          if (confirm('¿Eliminar esta tarea definitivamente?')) {
+            deleteTask(task.id);
+            closeTaskModal();
+          }
+        };
+
+        updatePriorityButtons(state.modalPriority);
+        renderModalAttachments();
+
+        document.getElementById('task-modal').classList.remove('hidden');
+      }
+
+      function closeTaskModal() {
+        document.getElementById('task-modal').classList.add('hidden');
+        state.currentEditingTask = null;
+        state.tempAttachments = [];
+      }
+
+      function updatePriorityButtons(priority) {
+        state.modalPriority = priority;
+        document.querySelectorAll('.priority-btn').forEach(btn => {
+          const p = btn.dataset.priority;
+          if (p === priority) {
+            btn.className = `priority-btn flex-1 py-2 rounded-lg text-xs font-semibold border transition ${
+              p === 'alta' ? 'bg-red-50 text-red-600 border-red-300' :
+              p === 'media' ? 'bg-amber-50 text-amber-600 border-amber-300' :
+              'bg-emerald-50 text-emerald-600 border-emerald-300'
+            }`;
+          } else {
+            btn.className = 'priority-btn flex-1 py-2 rounded-lg text-xs font-medium border border-surface-200 text-gray-500 hover:border-surface-300 transition';
+          }
+        });
+      }
+
+      function renderModalAttachments() {
+        const countSpan = document.getElementById('attachments-count');
+        countSpan.textContent = state.tempAttachments.length;
+
+        const photosSection = document.getElementById('photos-section');
+        const photosGrid = document.getElementById('photos-grid');
+        const docsSection = document.getElementById('docs-section');
+        const docsList = document.getElementById('docs-list');
+
+        const images = state.tempAttachments.filter(isImage);
+        const docs = state.tempAttachments.filter(a => !isImage(a));
+
+        // Photos
+        if (images.length > 0) {
+          photosSection.classList.remove('hidden');
+          photosGrid.innerHTML = images.map(img => `
+            <div class="group relative rounded-xl border border-surface-200 overflow-hidden bg-surface-100 aspect-video flex items-center justify-center">
+              <img src="${img.data}" alt="${escapeHtml(img.name)}" class="w-full h-full object-cover transition group-hover:scale-105" />
+              <div class="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                <button type="button" onclick="app.openLightbox('${img.id}')" class="p-1.5 rounded-lg bg-white/90 text-gray-700 hover:bg-white hover:text-brand-600 transition" title="Ver en grande">
+                  <i class="ph ph-eye text-sm"></i>
+                </button>
+                <a href="${img.data}" download="${escapeHtml(img.name)}" class="p-1.5 rounded-lg bg-white/90 text-gray-700 hover:bg-white hover:text-brand-600 transition" title="Descargar">
+                  <i class="ph ph-download-simple text-sm"></i>
+                </a>
+                <button type="button" onclick="app.removeTempAttachment('${img.id}')" class="p-1.5 rounded-lg bg-white/90 text-red-600 hover:bg-white transition" title="Eliminar">
+                  <i class="ph ph-trash text-sm"></i>
+                </button>
+              </div>
+              <span class="absolute bottom-1 left-1 right-1 px-1 py-0.5 rounded text-[10px] bg-black/60 text-white truncate group-hover:hidden">
+                ${escapeHtml(img.name)}
+              </span>
+            </div>
+          `).join('');
+        } else {
+          photosSection.classList.add('hidden');
+          photosGrid.innerHTML = '';
+        }
+
+        // Documents
+        if (docs.length > 0) {
+          docsSection.classList.remove('hidden');
+          docsList.innerHTML = docs.map(doc => `
+            <div class="flex items-center gap-2.5 p-2 rounded-xl border border-surface-200 bg-surface-50 hover:bg-white transition text-xs">
+              <div class="w-7 h-7 rounded-lg bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 font-bold text-[10px]">
+                ${getFileBadge(doc)}
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="font-medium text-gray-800 truncate">${escapeHtml(doc.name)}</p>
+                <p class="text-[11px] text-gray-400">${formatBytes(doc.size)}</p>
+              </div>
+              <button type="button" onclick="app.openLightbox('${doc.id}')" class="p-1.5 text-gray-500 hover:text-brand-600 hover:bg-surface-100 rounded-lg transition" title="Vista previa">
+                <i class="ph ph-eye text-base"></i>
+              </button>
+              <a href="${doc.data}" download="${escapeHtml(doc.name)}" class="p-1.5 text-gray-500 hover:text-brand-600 hover:bg-surface-100 rounded-lg transition" title="Descargar">
+                <i class="ph ph-download-simple text-base"></i>
+              </a>
+              <button type="button" onclick="app.removeTempAttachment('${doc.id}')" class="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Eliminar">
+                <i class="ph ph-trash text-base"></i>
+              </button>
+            </div>
+          `).join('');
+        } else {
+          docsSection.classList.add('hidden');
+          docsList.innerHTML = '';
+        }
+      }
+
+      function handleFilesUpload(files) {
+        if (!files || files.length === 0) return;
+        const fileList = Array.from(files);
+
+        fileList.forEach(file => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            state.tempAttachments.push({
+              id: 'att-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+              name: file.name,
+              type: file.type || 'application/octet-stream',
+              size: file.size,
+              data: reader.result,
+              uploadedAt: new Date().toISOString()
+            });
+            renderModalAttachments();
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function removeTempAttachment(attId) {
+        state.tempAttachments = state.tempAttachments.filter(a => a.id !== attId);
+        renderModalAttachments();
+      }
+
+      async function saveTaskFromModal() {
+        const titleInput = document.getElementById('task-title-input');
+        const title = titleInput.value.trim();
+        const errorEl = document.getElementById('modal-error');
+
+        if (!title) {
+          errorEl.textContent = 'El título de la tarea es obligatorio.';
+          errorEl.classList.remove('hidden');
+          titleInput.focus();
+          return;
+        }
+
+        const taskData = {
+          title,
+          description: document.getElementById('task-desc-input').value.trim(),
+          priority: state.modalPriority,
+          status: document.getElementById('task-status-select').value,
+          category: document.getElementById('task-cat-input').value.trim(),
+          dueDate: document.getElementById('task-date-input').value,
+          attachments: state.tempAttachments,
+        };
+
+        if (state.currentEditingTask) {
+          // Update
+          const updated = state.tasks.map(t => t.id === state.currentEditingTask.id ? { ...t, ...taskData } : t);
+          await saveTasks(updated);
+          showToast('Tarea actualizada');
+        } else {
+          // Create
+          const newTask = {
+            ...taskData,
+            id: 'task-' + Date.now(),
+            createdAt: new Date().toISOString()
+          };
+          await saveTasks([newTask, ...state.tasks]);
+          showToast('Tarea creada exitosamente');
+        }
+
+        closeTaskModal();
+        renderBoard();
+      }
+
+      async function deleteTask(taskId) {
+        const updated = state.tasks.filter(t => t.id !== taskId);
+        await saveTasks(updated);
+        renderBoard();
+        showToast('Tarea eliminada');
+      }
+
+      // ─── LIGHTBOX LOGIC ───
+      function openLightbox(attId) {
+        // Search in tempAttachments or existing tasks
+        let att = state.tempAttachments.find(a => a.id === attId);
+        if (!att) {
+          for (const t of state.tasks) {
+            const found = (t.attachments || []).find(a => a.id === attId);
+            if (found) { att = found; break; }
+          }
+        }
+        if (!att) return;
+
+        const modal = document.getElementById('lightbox-modal');
+        const title = document.getElementById('lightbox-title');
+        const size = document.getElementById('lightbox-size');
+        const downloadBtn = document.getElementById('lightbox-download-btn');
+        const body = document.getElementById('lightbox-body');
+        const icon = document.getElementById('lightbox-icon');
+
+        title.textContent = att.name;
+        size.textContent = `${formatBytes(att.size)} • ${getFileBadge(att)}`;
+        downloadBtn.href = att.data;
+        downloadBtn.download = att.name;
+
+        if (isImage(att)) {
+          icon.className = 'ph ph-image text-xl text-brand-400';
+          body.innerHTML = `<img src="${att.data}" alt="${escapeHtml(att.name)}" class="max-w-full max-h-[75vh] object-contain rounded-lg shadow-md" />`;
+        } else if (att.type?.includes('pdf') || att.name.toLowerCase().endsWith('.pdf')) {
+          icon.className = 'ph ph-file-pdf text-xl text-red-400';
+          body.innerHTML = `<iframe src="${att.data}" title="${escapeHtml(att.name)}" class="w-full h-[70vh] rounded-lg border border-gray-800 bg-white"></iframe>`;
+        } else {
+          icon.className = 'ph ph-file-text text-xl text-emerald-400';
+          body.innerHTML = `
+            <div class="flex flex-col items-center justify-center text-center p-8 max-w-sm">
+              <div class="w-16 h-16 rounded-2xl bg-gray-800 flex items-center justify-center mb-4 text-brand-400">
+                <i class="ph ph-file text-3xl"></i>
+              </div>
+              <h4 class="text-base font-medium text-gray-200 mb-1">${escapeHtml(att.name)}</h4>
+              <p class="text-xs text-gray-400 mb-5">Vista previa no disponible para este formato. Puedes descargarlo directamente en tu equipo.</p>
+              <a href="${att.data}" download="${escapeHtml(att.name)}" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition">
+                <i class="ph ph-download-simple"></i> Descargar archivo
+              </a>
+            </div>`;
+        }
+
+        modal.classList.remove('hidden');
+      }
+
+      function closeLightbox() {
+        document.getElementById('lightbox-modal').classList.add('hidden');
+      }
+
+      // ─── IMPORT PANEL (WORD .DOCX) ───
+      function openImportPanel() {
+        resetImport();
+        document.getElementById('import-panel').classList.remove('hidden');
+      }
+
+      function closeImportPanel() {
+        document.getElementById('import-panel').classList.add('hidden');
+      }
+
+      function resetImport() {
+        state.parsedImportTasks = [];
+        document.getElementById('docx-dropzone').classList.remove('hidden');
+        document.getElementById('import-preview-area').classList.add('hidden');
+        document.getElementById('import-preview-area').innerHTML = '';
+        document.getElementById('import-footer').classList.add('hidden');
+        document.getElementById('docx-file-input').value = '';
+      }
+
+      function handleDocxFile(file) {
+        if (!file || !file.name.endsWith('.docx')) {
+          alert('Por favor selecciona un archivo con extensión .docx');
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const arrayBuffer = e.target.result;
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            const text = result.value;
+
+            // Extract ===TASKS_START=== ... ===TASKS_END===
+            const startMarker = '===TASKS_START===';
+            const endMarker = '===TASKS_END===';
+            const sIdx = text.indexOf(startMarker);
+            const eIdx = text.indexOf(endMarker);
+
+            if (sIdx === -1 || eIdx === -1 || eIdx <= sIdx) {
+              throw new Error('No se encontró el bloque de tareas (===TASKS_START=== ... ===TASKS_END===) en el documento.');
+            }
+
+            const jsonStr = text.slice(sIdx + startMarker.length, eIdx).trim();
+            const data = JSON.parse(jsonStr);
+
+            if (!data.tasks || !Array.isArray(data.tasks) || data.tasks.length === 0) {
+              throw new Error('El JSON no contiene tareas válidas.');
+            }
+
+            state.parsedImportTasks = data.tasks.map((t, idx) => ({
+              id: 'imported-' + Date.now() + '-' + idx,
+              title: t.title || 'Tarea importada',
+              description: t.description || '',
+              priority: ['alta', 'media', 'baja'].includes(t.priority?.toLowerCase()) ? t.priority.toLowerCase() : 'media',
+              category: t.category || '',
+              dueDate: t.dueDate || '',
+              status: 'Pendiente',
+              createdAt: new Date().toISOString(),
+              attachments: []
+            }));
+
+            // Show preview
+            document.getElementById('docx-dropzone').classList.add('hidden');
+            const previewArea = document.getElementById('import-preview-area');
+            previewArea.classList.remove('hidden');
+
+            const recsHtml = (data.recommendations && data.recommendations.length > 0) ? `
+              <div class="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-800">
+                <h4 class="font-semibold text-amber-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <i class="ph ph-lightbulb"></i> Recomendaciones
+                </h4>
+                <ul class="space-y-1">
+                  ${data.recommendations.map(r => `<li>• ${escapeHtml(r)}</li>`).join('')}
+                </ul>
+              </div>` : '';
+
+            const tasksHtml = `
+              <div class="space-y-2">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">${state.parsedImportTasks.length} tarea(s) encontradas:</p>
+                ${state.parsedImportTasks.map(t => `
+                  <div class="p-2.5 rounded-xl border border-surface-200 bg-surface-50 text-xs">
+                    <p class="font-medium text-gray-800">${escapeHtml(t.title)}</p>
+                    ${t.description ? `<p class="text-gray-400 mt-0.5 line-clamp-1">${escapeHtml(t.description)}</p>` : ''}
+                  </div>
+                `).join('')}
+              </div>`;
+
+            previewArea.innerHTML = recsHtml + tasksHtml;
+            document.getElementById('import-footer').classList.remove('hidden');
+
+          } catch (err) {
+            alert('Error al analizar documento: ' + err.message);
+            resetImport();
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+
+      async function confirmImport() {
+        if (state.parsedImportTasks.length === 0) return;
+        await saveTasks([...state.parsedImportTasks, ...state.tasks]);
+        renderBoard();
+        closeImportPanel();
+        showToast(`${state.parsedImportTasks.length} tarea(s) importada(s)`);
+      }
+
+      // ─── HELPERS ───
+      function isImage(att) {
+        if (!att) return false;
+        if (att.type && att.type.startsWith('image/')) return true;
+        const name = (att.name || '').toLowerCase();
+        return /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(name);
+      }
+
+      function getFileBadge(att) {
+        if (isImage(att)) return 'IMG';
+        const name = (att.name || '').toLowerCase();
+        if (name.endsWith('.pdf')) return 'PDF';
+        if (name.endsWith('.doc') || name.endsWith('.docx')) return 'DOC';
+        if (name.endsWith('.xls') || name.endsWith('.xlsx')) return 'XLS';
+        if (name.endsWith('.txt')) return 'TXT';
+        return 'FILE';
+      }
+
+      function formatBytes(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+      }
+
+      function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        toast.className = `fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm transition-all duration-200 ${
+          type === 'error' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-gray-900 text-white border-gray-800'
+        }`;
+        toast.innerHTML = `<i class="ph ph-check-circle text-emerald-400 text-lg"></i> <span>${escapeHtml(message)}</span>`;
+        toast.classList.remove('hidden');
+        clearTimeout(toast.timer);
+        toast.timer = setTimeout(() => toast.classList.add('hidden'), 3000);
+      }
+
+      // ─── BIND GLOBAL EVENTS ───
+      function bindGlobalEvents() {
+        // Refresh
+        document.getElementById('btn-refresh').onclick = async () => {
+          await loadTasks();
+          renderBoard();
+          showToast('Tablero actualizado');
+        };
+
+        // New Task
+        document.getElementById('btn-new-task').onclick = () => openNewTask('Pendiente');
+
+        // Dropdown menu
+        const menuBtn = document.getElementById('btn-menu-toggle');
+        const menuDropdown = document.getElementById('dropdown-menu');
+        menuBtn.onclick = (e) => {
+          e.stopPropagation();
+          menuDropdown.classList.toggle('hidden');
+        };
+        window.addEventListener('click', () => menuDropdown.classList.add('hidden'));
+
+        // Reset data
+        document.getElementById('btn-reset-data').onclick = async () => {
+          if (confirm('¿Restablecer el tablero con las tareas de ejemplo iniciales?')) {
+            const defaults = getDefaultTasks();
+            await saveTasks(defaults);
+            renderBoard();
+            showToast('Datos restablecidos a los valores iniciales');
+          }
+        };
+
+        // Priority Buttons in Modal
+        document.querySelectorAll('.priority-btn').forEach(btn => {
+          btn.onclick = () => updatePriorityButtons(btn.dataset.priority);
+        });
+
+        // File upload input
+        const fileInput = document.getElementById('file-upload-input');
+        fileInput.onchange = (e) => handleFilesUpload(e.target.files);
+
+        // Dropzone drag & drop
+        const dropzone = document.getElementById('dropzone');
+        dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('border-brand-500', 'bg-brand-50'); };
+        dropzone.ondragleave = () => { dropzone.classList.remove('border-brand-500', 'bg-brand-50'); };
+        dropzone.ondrop = (e) => {
+          e.preventDefault();
+          dropzone.classList.remove('border-brand-500', 'bg-brand-50');
+          if (e.dataTransfer.files) handleFilesUpload(e.dataTransfer.files);
+        };
+
+        // Import Panel
+        document.getElementById('btn-open-import').onclick = openImportPanel;
+        const docxInput = document.getElementById('docx-file-input');
+        docxInput.onchange = (e) => handleDocxFile(e.target.files?.[0]);
+
+        const docxDrop = document.getElementById('docx-dropzone');
+        docxDrop.ondragover = (e) => { e.preventDefault(); docxDrop.classList.add('border-brand-500', 'bg-brand-50'); };
+        docxDrop.ondragleave = () => { docxDrop.classList.remove('border-brand-500', 'bg-brand-50'); };
+        docxDrop.ondrop = (e) => {
+          e.preventDefault();
+          docxDrop.classList.remove('border-brand-500', 'bg-brand-50');
+          if (e.dataTransfer.files?.[0]) handleDocxFile(e.dataTransfer.files[0]);
+        };
+
+        document.getElementById('btn-confirm-import').onclick = confirmImport;
+
+        // Escape key to close modals
+        window.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            closeTaskModal();
+            closeLightbox();
+            closeImportPanel();
+          }
+        });
+      }
+
+      // Public API
+      return {
+        init,
+        openNewTask,
+        openEditTask,
+        closeTaskModal,
+        saveTaskFromModal,
+        deleteTask,
+        removeTempAttachment,
+        openLightbox,
+        closeLightbox,
+        openImportPanel,
+        closeImportPanel,
+        resetImport
+      };
+    })();
+
+    // Start on load
+    window.addEventListener('DOMContentLoaded', app.init);
+  </script>
+</body>
+</html>
