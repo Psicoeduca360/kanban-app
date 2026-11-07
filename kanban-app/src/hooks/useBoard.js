@@ -1,10 +1,10 @@
 /**
- * useBoard — central state manager for the Kanban board with local persistence.
+ * useBoard — central state manager for the Kanban board with IndexedDB persistence.
  *
  * Responsibilities:
- * - Load tasks from localStorage on mount
+ * - Load tasks asynchronously from IndexedDB/localStorage on mount
  * - Provide CRUD operations (create, update, delete, move, import)
- * - Persist changes synchronously to localStorage
+ * - Persist changes asynchronously to IndexedDB without blocking UI
  */
 import { useState, useCallback } from 'react'
 import {
@@ -21,12 +21,12 @@ export function useBoard() {
 
   // ─── Fetch ───────────────────────────────────────────────────────────────────
 
-  const fetchTasks = useCallback(() => {
+  const fetchTasks = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const stored = getStoredTasks()
-      setTasks(stored)
+      const stored = await getStoredTasks()
+      setTasks(stored || [])
     } catch (e) {
       setError(e.message)
     } finally {
@@ -41,10 +41,11 @@ export function useBoard() {
       ...taskData,
       id: `task-${Date.now()}`,
       createdAt: new Date().toISOString(),
+      attachments: taskData.attachments || [],
     }
     setTasks(prev => {
       const updated = [newTask, ...prev]
-      saveStoredTasks(updated)
+      saveStoredTasks(updated).catch(console.error)
       return updated
     })
     return newTask
@@ -55,7 +56,7 @@ export function useBoard() {
   const editTask = useCallback((taskData) => {
     setTasks(prev => {
       const updated = prev.map(t => (t.id === taskData.id ? { ...t, ...taskData } : t))
-      saveStoredTasks(updated)
+      saveStoredTasks(updated).catch(console.error)
       return updated
     })
   }, [])
@@ -65,7 +66,7 @@ export function useBoard() {
   const moveTask = useCallback((taskId, newStatus) => {
     setTasks(prev => {
       const updated = prev.map(t => (t.id === taskId ? { ...t, status: newStatus } : t))
-      saveStoredTasks(updated)
+      saveStoredTasks(updated).catch(console.error)
       return updated
     })
   }, [])
@@ -75,7 +76,7 @@ export function useBoard() {
   const removeTask = useCallback((taskId) => {
     setTasks(prev => {
       const updated = prev.filter(t => t.id !== taskId)
-      saveStoredTasks(updated)
+      saveStoredTasks(updated).catch(console.error)
       return updated
     })
   }, [])
@@ -87,11 +88,12 @@ export function useBoard() {
       ...taskData,
       id: `imported-${Date.now()}-${idx}`,
       createdAt: new Date().toISOString(),
+      attachments: taskData.attachments || [],
     }))
 
     setTasks(prev => {
       const updated = [...imported, ...prev]
-      saveStoredTasks(updated)
+      saveStoredTasks(updated).catch(console.error)
       return updated
     })
 
@@ -100,10 +102,10 @@ export function useBoard() {
 
   // ─── Reset ───────────────────────────────────────────────────────────────────
 
-  const resetToDefaults = useCallback(() => {
-    clearStoredTasks()
+  const resetToDefaults = useCallback(async () => {
+    await clearStoredTasks()
     const defaults = getDefaultTasks()
-    saveStoredTasks(defaults)
+    await saveStoredTasks(defaults)
     setTasks(defaults)
   }, [])
 

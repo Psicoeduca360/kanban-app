@@ -116,3 +116,35 @@ export function isOverdue(dateStr) {
 export function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
+
+/** Format file size in bytes to a human-readable string */
+export function formatBytes(bytes, decimals = 1) {
+  if (!bytes || bytes === 0) return '0 B'
+  const k = 1024
+  const dm = decimals < 0 ? 0 : decimals
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i]
+}
+
+/** Check if an attachment is an image based on MIME type or file extension */
+export function isImageAttachment(attachment) {
+  if (!attachment) return false
+  if (attachment.type && attachment.type.startsWith('image/')) return true
+  const name = attachment.name || ''
+  return /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(name)
+}
+
+/** Get a clean short uppercase badge label for an attachment type */
+export function getFileBadge(attachment) {
+  if (!attachment) return 'FILE'
+  if (isImageAttachment(attachment)) return 'IMG'
+  const name = (attachment.name || '').toLowerCase()
+  if (name.endsWith('.pdf') || attachment.type?.includes('pdf')) return 'PDF'
+  if (name.endsWith('.doc') || name.endsWith('.docx') || attachment.type?.includes('word')) return 'DOC'
+  if (name.endsWith('.xls') || name.endsWith('.xlsx') || attachment.type?.includes('sheet')) return 'XLS'
+  if (name.endsWith('.ppt') || name.endsWith('.pptx')) return 'PPT'
+  if (name.endsWith('.txt')) return 'TXT'
+  return 'FILE'
+}
+

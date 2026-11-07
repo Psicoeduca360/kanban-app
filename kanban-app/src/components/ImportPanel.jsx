@@ -1,7 +1,7 @@
 /**
  * ImportPanel — slide-in side panel for importing tasks from a .docx file.
  * Uses mammoth.js via the docxParser utility to extract structured tasks.
- * Shows a preview of tasks before confirming the import to GitHub.
+ * Shows a preview of tasks before confirming the import to the board.
  */
 import React, { useState, useRef } from 'react'
 import {
@@ -250,8 +250,8 @@ export default function ImportPanel({ onImport, onClose }) {
           {step === STEP.IMPORTING && (
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
-              <p className="text-sm font-medium text-gray-600">Creando issues en GitHub...</p>
-              <p className="text-xs text-gray-400">Esto puede tomar unos segundos</p>
+              <p className="text-sm font-medium text-gray-600">Guardando tareas en el tablero...</p>
+              <p className="text-xs text-gray-400">Esto puede tomar un momento</p>
             </div>
           )}
 

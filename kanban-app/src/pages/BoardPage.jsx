@@ -88,7 +88,7 @@ export default function BoardPage() {
 
   const openNewTask = (status = 'Pendiente') => {
     setDefaultStatus(status)
-    setEditingTask({ title: '', description: '', priority: 'media', category: '', dueDate: '', status })
+    setEditingTask({ title: '', description: '', priority: 'media', category: '', dueDate: '', status, attachments: [] })
     setIsNewTask(true)
   }
 
